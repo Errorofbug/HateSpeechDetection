@@ -109,7 +109,7 @@ if __name__ == "__main__":
     processor = DataProcessor()
     # 请根据你实际存放的数据修改这里的路径
     configs = [
-        ('data/raw/COLDataset/dev.csv', 'TEXT', 'label', 'zh'),
-        ('data/raw/toxicndata/dev.json', 'content', 'toxic', 'zh')
+        # ('data/raw/COLDataset/dev.csv', 'TEXT', 'label', 'zh'),
+        # ('data/raw/toxicndata/dev.json', 'content', 'toxic', 'zh')
     ]
     processor.process_and_split(configs)
