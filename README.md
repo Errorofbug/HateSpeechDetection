@@ -149,15 +149,32 @@ class ContrastiveHateSpeechModel(nn.Module):
 
 ### 对比学习策略
 
-为了增强模型对语义不变性的学习，我们采用**同义句对**作为正样本：
-- **原句**：原始文本。
-- **增强句**：通过同义词替换得到语义相近的变体（详见数据增强部分）。
+本项目采用了**有监督对比学习（Supervised Contrastive Learning，SupCon）** 策略，以充分利用标注信息提升模型性能：
 
-训练时，同一句子的原句与增强句经过投影层后得到的特征向量应尽可能接近，而与同一batch内其他句子的特征向量应尽可能远离。
+- **正样本构造**：每个样本由**原句-增强句对**组成，通过同义词替换得到语义相近的变体（详见数据增强部分）。
+- **监督信号利用**：与传统无监督对比学习（InfoNCE）仅拉近原句与增强句不同，SupCon 额外利用了类别标签信息：
+  - 同一类别的样本（如都是不当言论或都是正常言论）的特征向量应相互接近。
+  - 不同类别的样本特征向量应相互远离。
+  - 原句与增强句作为同一语义的正样本对，其特征向量应更加接近。
+
+这种策略使得模型不仅能学习到语义不变性（同义句应具有相似特征），还能学习到类内紧凑性和类间可分性，从而提升分类性能。
 
 ### 损失函数
 
-总损失由**分类损失**和**对比损失**加权组成，其中对比损失（InfoNCE）计算如下：
+总损失由**分类损失**和**对比损失**加权组成，联合损失公式如下：
+
+$$
+\mathcal{L} = \mathcal{L}_{\text{CE}} + \lambda \cdot \mathcal{L}_{\text{con}}
+$$
+
+其中：
+- $\mathcal{L}_{\text{CE}}$ 是分类任务的交叉熵损失。
+- $\mathcal{L}_{\text{con}}$ 是对比损失，可采用无监督（InfoNCE）或有监督（SupCon）形式。
+- $\lambda$ 是对比损失的权重（默认 0.1）。
+
+#### 1. 无监督对比损失（InfoNCE）
+
+InfoNCE（Info Noise-Contrastive Estimation）是无监督对比学习的经典损失，仅利用原句-增强句对作为正样本：
 
 ```python
 def info_nce_loss(features_original, features_augmented, temperature=0.05):
@@ -173,14 +190,58 @@ def info_nce_loss(features_original, features_augmented, temperature=0.05):
     return loss
 ```
 
-联合损失为：
-$$
-\mathcal{L} = \mathcal{L}_{\text{CE}} + \lambda \cdot \mathcal{L}_{\text{con}}
-$$
-其中：
-- $\mathcal{L}_{\text{CE}} $是分类任务的交叉熵损失。
-- $\mathcal{L}_{\text{con}}$ 是对比损失（InfoNCE）。
-- $\lambda$ 是对比损失的权重（默认 0.1）。
+该损失强制**同一句子的原句与增强句在特征空间接近**，而与batch内其他句子的特征远离。
+
+#### 2. 有监督对比损失（SupCon）
+
+SupCon（Supervised Contrastive Loss）扩展了InfoNCE，额外利用类别标签信息，使**同一类别的样本相互接近，不同类别的样本相互远离**：
+
+```python
+def supcon_loss(features_original, features_augmented, labels, temperature=0.05):
+    device = features_original.device
+    batch_size = features_original.shape[0]
+
+    # 1. L2 归一化
+    features_original = F.normalize(features_original, p=2, dim=1)
+    features_augmented = F.normalize(features_augmented, p=2, dim=1)
+
+    # 2. 将原句和增强句拼接，得到 2N 个样本
+    features = torch.cat([features_original, features_augmented], dim=0)
+    labels = torch.cat([labels, labels], dim=0)
+
+    # 3. 构造掩码矩阵：标签相同的样本对为 1
+    labels = labels.contiguous().view(-1, 1)
+    mask = torch.eq(labels, labels.T).float().to(device)
+
+    # 4. 计算相似度矩阵并减去最大值（数值稳定）
+    anchor_dot_contrast = torch.matmul(features, features.T) / temperature
+    logits_max, _ = torch.max(anchor_dot_contrast, dim=1, keepdim=True)
+    logits = anchor_dot_contrast - logits_max.detach()
+
+    # 5. 消除自身对比（对角线置零）
+    logits_mask = torch.scatter(
+        torch.ones_like(mask),
+        1,
+        torch.arange(batch_size * 2).view(-1, 1).to(device),
+        0
+    )
+    mask = mask * logits_mask
+
+    # 6. 计算对数概率
+    exp_logits = torch.exp(logits) * logits_mask
+    log_prob = logits - torch.log(exp_logits.sum(1, keepdim=True))
+
+    # 7. 计算正样本平均损失
+    mask_pos_pairs = mask.sum(1)
+    mask_pos_pairs = torch.where(mask_pos_pairs < 1e-6, torch.ones_like(mask_pos_pairs), mask_pos_pairs)
+    mean_log_prob_pos = (mask * log_prob).sum(1) / mask_pos_pairs
+
+    # 8. 最终损失
+    loss = - mean_log_prob_pos.mean()
+    return loss
+```
+
+**当前训练中采用的是 SupCon 损失**，因为它能同时利用数据增强产生的正样本对和类别监督信号，提升模型的判别能力。
 
 ### 训练流程
 
