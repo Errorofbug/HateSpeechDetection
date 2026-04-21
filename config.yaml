@@ -1,0 +1,57 @@
+# 基于对比学习的不当言论检测系统 - 配置文件
+
+# 项目路径配置
+paths:
+  data_dir: data
+  data_raw_dir: data/raw
+  data_processed_dir: data/processed
+  checkpoints_dir: checkpoints
+  logs_dir: logs
+  figures_dir: docs
+  utils_dir: utils
+  models_dir: models
+  scripts_dir: scripts
+
+# 训练配置
+training:
+  batch_size: 16
+  epochs: 1
+  learning_rate: 2e-5
+  lambda_weight: 0.1
+  temperature: 0.05
+  projection_dim: 128
+  dropout_rate: 0.3
+  log_per_step: 1 # 每多少步记录一次loss
+  use_mini_dataset: true  # false: 使用完整数据集, true: 使用mini数据集快速测试
+  use_contrastive: true  # true: 使用对比学习, false: 不使用对比学习
+  contrastive_type: supcon  # supcon: 有监督对比学习, infonce: InfoNCE
+
+# 模型配置
+model:
+  model_name: bert-base-chinese
+  hidden_size: 768
+  num_labels: 2
+  max_seq_length: 128
+
+# 评估配置
+evaluation:
+  batch_size: 16
+  model_name: model_supcon  # 默认评估的模型名
+  save_results: true
+  results_dir: checkpoints/evaluation_results
+
+# 可视化配置
+visualization:
+  figures_dir: docs/figures
+  dpi: 300
+  figure_format: png
+  font_size: 12
+  figure_style: seaborn-v0_8-whitegrid
+  font_family: SimHei  # 中文字体
+
+# 日志配置
+logging:
+  log_dir: logs
+  log_to_file: true
+  log_to_console: true
+  log_level: INFO  # DEBUG, INFO, WARN, ERROR
