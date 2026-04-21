@@ -1,6 +1,31 @@
 # 基于对比学习的不当言论检测研究
 
+## 项目概述
+
+本项目实现了一个基于对比学习的不当言论检测系统，使用BERT作为文本编码器，结合有监督对比学习（SupCon）提升模型性能。
+
 ## 环境搭建
+
+### 快速开始
+
+```bash
+# 1. 安装依赖
+pip install -r requirements.txt
+
+# 2. 首次运行会初始化配置文件
+python scripts/train.py --help
+
+# 3. 训练模型（默认使用完整数据集）
+python scripts/train.py
+
+# 4. 评估模型
+python scripts/evaluate.py
+
+# 5. 生成实验图表
+python scripts/generate_figures.py
+```
+
+### 详细安装步骤
 
 1. **安装conda**
 
@@ -9,16 +34,21 @@
 2. **在conda中创建虚拟环境**：hate_speech_det
 
    ```shell
-   # 选择的是python3.9下的latest版本
    conda create -n hate_speech_det python=3.9
+   conda activate hate_speech_det
    ```
 
-3. **安装相关深度学习包**
+3. **安装依赖**
+
+   ```bash
+   pip install -r requirements.txt
+   ```
 
 ## 项目结构
 
 ```
 hate-speech-det/
+├── config.yaml              # 配置文件（统一管理所有参数）
 ├── data/                    # 数据目录
 │   ├── raw/                # 原始数据集 (COLD, TOXICN, Davidson)
 │   └── processed/          # 处理后的数据 (含增强文本 text_aug)
@@ -26,15 +56,80 @@ hate-speech-det/
 │   └── model.py           # 对比学习不当言论检测模型
 ├── scripts/               # 核心脚本
 │   ├── dataset.py         # 数据加载与预处理
-│   ├── train.py           # 模型训练脚本
-│   ├── evaluate.py        # 评估脚本
-│   └── data_integration.py # 数据整合脚本
+│   ├── train.py           # 训练脚本（支持配置、时间戳日志）
+│   ├── evaluate.py        # 评估脚本（支持配置、结果保存）
+│   ├── data_intergation.py # 数据整合脚本
+│   └── visualize_*.py     # 可视化脚本（支持配置）
+├── utils/                 # 工具模块
+│   ├── __init__.py       # 工具包初始化
+│   ├── logger.py          # 统一日志模块
+│   └── config.py           # 配置管理模块
 ├── checkpoints/           # 训练好的模型权重
+├── logs/                  # 训练和评估日志（带时间戳）
+├── docs/                  # 文档目录
+│   └── figures/          # 生成的实验图表
 ├── templates/             # Flask 前端模板
 │   └── index.html         # 检测系统网页界面
 ├── app.py                 # Flask 后端服务器
 ├── resources/             # 停用词等资源文件
-└── README.md              # 项目说明
+└── requirements.txt       # 依赖清单
+```
+
+## 配置说明
+
+项目使用 `config.yaml` 统一管理所有配置，避免代码中写死路径。
+
+### 配置项
+
+| 配置项 | 默认值 | 说明 |
+|---------|---------|------|
+| `paths.data_dir` | data | 数据目录 |
+| `paths.checkpoints_dir` | checkpoints | 模型权重目录 |
+| `paths.logs_dir` | logs | 日志目录 |
+| `paths.figures_dir` | docs/figures | 图表输出目录 |
+| `training.batch_size` | 16 | 批次大小 |
+| `training.epochs` | 3 | 训练轮数 |
+| `training.learning_rate` | 2e-5 | 学习率 |
+| `training.lambda_weight` | 0.1 | 对比损失权重 |
+| `training.temperature` | 0.05 | 温度参数 |
+| `training.use_mini_dataset` | false | 是否使用mini数据集 |
+| `training.use_contrastive` | true | 是否使用对比学习 |
+| `training.contrastive_type` | supcon | 对比学习类型 (supcon/infonce) |
+| `model.model_name` | bert-base-chinese | BERT模型名称 |
+| `evaluation.model_name` | model_supcon | 默认评估的模型 |
+| `visualization.dpi` | 300 | 图表分辨率 |
+
+### 修改配置
+
+直接编辑 `config.yaml` 文件即可，例如：
+
+```yaml
+# 使用完整数据集训练
+training:
+  use_mini_dataset: false
+  epochs: 5
+```
+
+## 日志系统
+
+### 日志目录结构
+
+```
+logs/
+├── training_20260421_175858.log  # 训练日志（带时间戳）
+├── evaluate_20260421_180015.log  # 评估日志（带时间戳）
+└── .gitkeep
+```
+
+### 日志格式
+
+每次运行都会生成带时间戳的日志文件，不会覆盖之前的日志。
+
+训练日志格式：
+```
+[timestamp] [level] [module] 配置信息
+[timestamp] [level] [module] Epoch 1/3
+[timestamp] [level] [module] Step 10 | Total Loss: 0.5123 | CE Loss: 0.4567 | Con Loss: 0.0556
 ```
 
 ## 数据准备与处理
@@ -43,277 +138,290 @@ hate-speech-det/
 
 #### 中文数据集
 
-| 数据集名称                                | 描述                                                         | 数据规模             | 数据格式 | 来源/下载地址                                                |
-| ----------------------------------------- | ------------------------------------------------------------ | -------------------- | -------- | :----------------------------------------------------------- |
-| COLD (Chinese Offensive Language Dataset) | 目前最权威的中文攻击性语言数据集，涵盖性别、种族、地域等维度的攻击。 | 3.7万条 (知乎、微博) | CSV      | https://github.com/thu-coai/COLDataset                       |
-| TOXICN                                    | 包含知乎和贴吧数据，针对中文语境下的毒性言论（Toxicity）进行了精细分类。 | 约1.2万条            | JSON     | https://www.scidb.cn/en/detail?dataSetId=32236889f4c54c07a044fea962cb2043 |
+| 数据集名称 | 描述 | 数据规模 | 数据格式 | 来源 |
+|-----------|------|---------|---------|------|
+| COLD | 最权威的中文攻击性语言数据集 | 3.7万条 (知乎、微博) | CSV | https://github.com/thu-coai/COLDataset |
+| TOXICN | 针对中文语境下的毒性言论 | 约1.2万条 | JSON | scidb.cn |
 
 #### 英文数据集
 
-| 数据集名称                                    | 描述                                                      | 数据规模          | 数据格式 | 来源/下载地址                                                |
-| --------------------------------------------- | --------------------------------------------------------- | ----------------- | -------- | :----------------------------------------------------------- |
-| Hate Speech and Offensive Language (Davidson) | NLP领域的经典数据集，分为 Hate、Offensive、Neither 三类。 | 2.5万条 (Twitter) | CSV      | https://www.kaggle.com/datasets/mrmorj/hate-speech-and-offensive-language-dataset |
+| 数据集名称 | 描述 | 数据规模 | 数据格式 | 来源 |
+|-----------|------|---------|---------|------|
+| Davidson | NLP领域的经典数据集 | 2.5万条 (Twitter) | CSV | Kaggle |
 
 ### 数据增强
 
-核心思路：利用`jieba（中文）`和`nltk（英文）`分词，进行同义词替换后得到增强后的数据`text_aug`
+核心思路：利用`jieba（中文）`和`nltk（英文）`分词，进行同义词替换后得到增强后的数据`text_aug`。
 
-`scripts/data_intergation.py`脚本主要包含：
+**脚本位置**: `scripts/data_intergation.py`
 
-1. **词级别句子划分**
-2. **去除停用词**：提取核心实词。
-3. **同义词替换**：
-   - 中文使用`synonyms`库：https://blog.csdn.net/jcjy_baiyang/article/details/138375629。
-   - 英文使用`nltk`库。
-
-核心代码：
-
-```python
-def augment_text(self, text, lang='zh'):
-  """
-  核心数据增强逻辑
-  """
-  if lang == 'zh':
-      # 1. 词级别切分
-      raw_words = list(jieba.cut(text))
-      # 2. 去停用词，提取核心实词用于增强
-      valid_words = [w for w in raw_words if w not in self.cn_stopwords and w.strip()]
-  else:
-      raw_words = nltk.word_tokenize(text)
-      valid_words = [w for w in raw_words if len(w) > 2]  # 英文简单过滤短词
-
-  if len(valid_words) < 2:
-      return text  # 句子太短或全是停用词，放弃增强
-
-  new_words = raw_words.copy()  # 复制原句列表，保证生成的新句子结构完整
-
-  # 策略：随机挑选 1-2 个有效实词进行同义词替换
-  replace_count = min(2, max(1, int(len(valid_words) * 0.2)))
-  targets = random.sample(valid_words, replace_count)
-
-  for i, word in enumerate(new_words):
-      if word in targets:
-          if lang == 'zh':
-              nearby = synonyms.nearby(word)
-              if nearby and len(nearby[0]) > 1:
-                  new_words[i] = nearby[0][1]  # 替换为最相近的词
-          else:
-              syns = wordnet.synsets(word)
-              if syns:
-                  for l in syns[0].lemmas():
-                      if l.name() != word:
-                          new_words[i] = l.name().replace('_', ' ')
-                          break
-
-  # 3. 将增强后的词列表重新无缝拼接成字符串（交给将来的BERT处理）
-  return "".join(new_words) if lang == 'zh' else " ".join(new_words)
-```
+**实现**:
+1. 词级别句子划分
+2. 去除停用词，提取核心实词
+3. 同义词替换：
+   - 中文使用`synonyms`库
+   - 英文使用`nltk`库
 
 ## 模型开发与训练
 
 ### 模型架构
 
-本项目采用**对比学习**与**BERT 文本编码器**相结合的架构，核心模型定义在 `models/model.py` 中：
+本项目采用**对比学习**与**BERT 文本编码器**相结合的架构。
 
-```python
-class ContrastiveHateSpeechModel(nn.Module):
-    def __init__(self, model_name='bert-base-chinese', projection_dim=128):
-        super(ContrastiveHateSpeechModel, self).__init__()
-        # 1. 文本编码器 (Text Encoder)
-        self.encoder = BertModel.from_pretrained(model_name)
-        hidden_size = self.encoder.config.hidden_size
-        # 2. 对比学习模块 / 投影层 (Projector)
-        self.projector = nn.Sequential(
-            nn.Linear(hidden_size, hidden_size),
-            nn.ReLU(),
-            nn.Linear(hidden_size, projection_dim)
-        )
-        # 3. 分类头 (Classifier Head)
-        self.classifier = nn.Sequential(
-            nn.Dropout(0.3),
-            nn.Linear(hidden_size, 2)
-        )
-
-    def forward(self, input_ids, attention_mask):
-        outputs = self.encoder(input_ids=input_ids, attention_mask=attention_mask)
-        cls_embedding = outputs.pooler_output
-        projected_feature = self.projector(cls_embedding)  # 用于对比学习的特征
-        logits = self.classifier(cls_embedding)            # 用于分类的 logits
-        return projected_feature, logits
-```
+**脚本位置**: `models/model.py`
 
 模型包含三个核心组件：
-1. **文本编码器**：基于预训练的 BERT（`bert-base-chinese` 或 `bert-base-uncased`），将输入文本映射为语义向量。
-2. **投影层**：将 BERT 输出的高维向量（768 维）映射到低维空间（如 128 维），用于计算对比损失，提升特征的判别性。
-3. **分类头**：在 BERT 输出的 [CLS] 向量上添加一个 Dropout 和线性层，输出二分类（正常言论/不当言论）的 logits。
+1. **文本编码器**：基于预训练的 BERT
+2. **投影层**：768维 → 128维，用于对比学习
+3. **分类头**：输出二分类的logits
 
 ### 对比学习策略
 
-本项目采用了**有监督对比学习（Supervised Contrastive Learning，SupCon）** 策略，以充分利用标注信息提升模型性能：
-
-- **正样本构造**：每个样本由**原句-增强句对**组成，通过同义词替换得到语义相近的变体（详见数据增强部分）。
-- **监督信号利用**：与传统无监督对比学习（InfoNCE）仅拉近原句与增强句不同，SupCon 额外利用了类别标签信息：
-  - 同一类别的样本（如都是不当言论或都是正常言论）的特征向量应相互接近。
-  - 不同类别的样本特征向量应相互远离。
-  - 原句与增强句作为同一语义的正样本对，其特征向量应更加接近。
-
-这种策略使得模型不仅能学习到语义不变性（同义句应具有相似特征），还能学习到类内紧凑性和类间可分性，从而提升分类性能。
+采用**有监督对比学习（SupCon）**策略：
+- 正样本：原句-增强句对（同义词替换）
+- 监督信号：将同类别的样本拉近，异类别推远
 
 ### 损失函数
 
-总损失由**分类损失**和**对比损失**加权组成，联合损失公式如下：
+联合损失公式：
 
 $$
-\mathcal{L} = \mathcal{L}_{\text{CE}} + \lambda \cdot \mathcal{L}_{\text{con}}
-$$
+\mathcal{L} = \mathcal{L}_{\text{CE}} + \lambda \cdot \mathcal{L}_{\text{con}}$$
 
-其中：
-- $\mathcal{L}_{\text{CE}}$ 是分类任务的交叉熵损失。
-- $\mathcal{L}_{\text{con}}$ 是对比损失，可采用无监督（InfoNCE）或有监督（SupCon）形式。
-- $\lambda$ 是对比损失的权重（默认 0.1）。
+- $\mathcal{L}_{\text{CE}}$: 交叉熵损失（分类）
+- $\mathcal{L}_{\text{con}}$: SupCon损失（对比学习）
+- $\lambda$: 对比损失权重（默认0.1）
 
-#### 1. 无监督对比损失（InfoNCE）
-
-InfoNCE（Info Noise-Contrastive Estimation）是无监督对比学习的经典损失，仅利用原句-增强句对作为正样本：
-
-```python
-def info_nce_loss(features_original, features_augmented, temperature=0.05):
-    # 归一化
-    features_original = F.normalize(features_original, p=2, dim=1)
-    features_augmented = F.normalize(features_augmented, p=2, dim=1)
-    # 计算相似度矩阵
-    similarity_matrix = torch.matmul(features_original, features_augmented.T) / temperature
-    batch_size = features_original.size(0)
-    labels = torch.arange(batch_size).to(features_original.device)
-    # 交叉熵损失
-    loss = F.cross_entropy(similarity_matrix, labels)
-    return loss
-```
-
-该损失强制**同一句子的原句与增强句在特征空间接近**，而与batch内其他句子的特征远离。
-
-#### 2. 有监督对比损失（SupCon）
-
-SupCon（Supervised Contrastive Loss）扩展了InfoNCE，额外利用类别标签信息，使**同一类别的样本相互接近，不同类别的样本相互远离**：
-
-```python
-def supcon_loss(features_original, features_augmented, labels, temperature=0.05):
-    device = features_original.device
-    batch_size = features_original.shape[0]
-
-    # 1. L2 归一化
-    features_original = F.normalize(features_original, p=2, dim=1)
-    features_augmented = F.normalize(features_augmented, p=2, dim=1)
-
-    # 2. 将原句和增强句拼接，得到 2N 个样本
-    features = torch.cat([features_original, features_augmented], dim=0)
-    labels = torch.cat([labels, labels], dim=0)
-
-    # 3. 构造掩码矩阵：标签相同的样本对为 1
-    labels = labels.contiguous().view(-1, 1)
-    mask = torch.eq(labels, labels.T).float().to(device)
-
-    # 4. 计算相似度矩阵并减去最大值（数值稳定）
-    anchor_dot_contrast = torch.matmul(features, features.T) / temperature
-    logits_max, _ = torch.max(anchor_dot_contrast, dim=1, keepdim=True)
-    logits = anchor_dot_contrast - logits_max.detach()
-
-    # 5. 消除自身对比（对角线置零）
-    logits_mask = torch.scatter(
-        torch.ones_like(mask),
-        1,
-        torch.arange(batch_size * 2).view(-1, 1).to(device),
-        0
-    )
-    mask = mask * logits_mask
-
-    # 6. 计算对数概率
-    exp_logits = torch.exp(logits) * logits_mask
-    log_prob = logits - torch.log(exp_logits.sum(1, keepdim=True))
-
-    # 7. 计算正样本平均损失
-    mask_pos_pairs = mask.sum(1)
-    mask_pos_pairs = torch.where(mask_pos_pairs < 1e-6, torch.ones_like(mask_pos_pairs), mask_pos_pairs)
-    mean_log_prob_pos = (mask * log_prob).sum(1) / mask_pos_pairs
-
-    # 8. 最终损失
-    loss = - mean_log_prob_pos.mean()
-    return loss
-```
-
-**当前训练中采用的是 SupCon 损失**，因为它能同时利用数据增强产生的正样本对和类别监督信号，提升模型的判别能力。
-
-### 训练流程
-
-训练脚本 `scripts/train.py` 的主要步骤：
-
-1. **配置**：设置设备（GPU/CPU）、批次大小、学习率、训练轮数等。
-2. **数据加载**：使用 `HateSpeechDataset` 加载已增强的数据（原句 `text` 与增强句 `text_aug`）。
-3. **模型初始化**：加载 `ContrastiveHateSpeechModel` 和优化器（AdamW）。
-4. **训练循环**：
-   - 对每个 batch，分别计算原句和增强句的投影特征及分类 logits。
-   - 计算分类损失和对比损失，并按权重相加得到总损失。
-   - 反向传播并更新参数。
-5. **模型保存**：训练完成后将模型权重保存至 `checkpoints/best_model.pth`。
-
-### 快速开始训练
+### 训练命令
 
 ```bash
-# 进入项目根目录
-cd /path/to/hate-speech-det
+# 查看帮助信息
+python scripts/train.py --help
 
-# 运行训练脚本（默认使用 mini_train.csv 进行快速测试）
+# 训练模型（使用配置文件中的参数）
 python scripts/train.py
+
+# 训练指定模型
+python scripts/train.py --contrastive-type supcon --full
+
+# 训练基线模型（无对比学习）
+python scripts/train.py --no-contrastive --full
+
+# 使用InfoNCE损失
+python scripts/train.py --contrastive-type infonce --full
 ```
 
-如需完整训练，请修改 `train.py` 中的数据集路径并将 `epochs` 调整为 3‑5。
+### 训练配置
+
+通过修改 `config.yaml` 调整训练参数：
+
+```yaml
+training:
+  batch_size: 16
+  epochs: 5
+  learning_rate: 2e-5
+  lambda_weight: 0.1
+  use_contrastive: true
+  contrastive_type: supcon
+  use_mini_dataset: false
+```
 
 ## 端到端的检测系统
 
 本项目提供了一个基于 **Flask** 的 Web 应用，允许用户通过浏览器实时检测文本是否为不当言论。
 
-### 核心推理逻辑
-
-**模型加载**：启动时加载预训练的 `ContrastiveHateSpeechModel` 和 BERT 分词器。
-
-核心推理代码：
-
-```python
-@app.route('/predict', methods=['POST'])
-def predict():
-    data = request.get_json()
-    text = data.get('text', '').strip()
-    # 分词与编码
-    inputs = tokenizer(text, return_tensors='pt', max_length=128,
-                       truncation=True, padding='max_length')
-    # 模型推理
-    with torch.no_grad():
-        _, logits = model(input_ids, attention_mask)
-        probabilities = torch.softmax(logits, dim=1)[0]
-        pred_label = torch.argmax(probabilities).item()
-        confidence = probabilities[pred_label].item()
-    # 返回 JSON 结果
-    result = {
-        'label': int(pred_label),
-        'label_name': '不当言论 🚨' if pred_label == 1 else '正常言论 ✅',
-        'confidence': f"{confidence * 100:.2f}%"
-    }
-    return jsonify(result)
-```
-
 ### 启动检测系统
 
-1. **确保模型已训练**：检查 `checkpoints/best_model.pth` 是否存在，若不存在请先运行训练脚本。
+1. **确保模型已训练**：检查 `checkpoints/model_*.pth` 是否存在
 
 2. **启动Flask服务器**：
-   
+
    ```bash
-   cd /path/to/hate-speech-det
    python app.py
    ```
+
    服务器将在 `http://127.0.0.1:5000` 启动。
 
 ### 注意事项
 
-- 首次启动时会从 Hugging Face 镜像下载 BERT 分词器和模型参数（若未缓存），请确保网络通畅。
-- 默认使用 `bert-base-chinese` 模型，如需检测英文文本，请修改 `app.py` 中的模型名称并重新训练。
+- 首次启动时会从 Hugging Face 镜像下载 BERT 分词器和模型参数
+- 默认使用 `bert-base-chinese` 模型，如需检测英文文本，请修改 `config.yaml` 并重新训练
+
+## 实验可视化
+
+项目提供完整的实验可视化工具，用于生成论文所需的图表。
+
+### 可用图表
+
+| 图表名称 | 说明 | 脚本 |
+|---------|------|------|
+| 训练曲线 | 展示训练过程中Loss的变化趋势 | `scripts/visualize_training.py` |
+| 混淆矩阵 | 展示TP/FP/FN/TN的详细分布 | `scripts/visualize_confusion.py` |
+| 性能对比 | 对比不同模型的性能指标 | `scripts/visualize_performance.py` |
+| ROC曲线 | 展示模型的分类能力 | `scripts/visualize_roc.py` |
+| t-SNE图 | 可视化特征空间的分布 | `scripts/visualize_tsne.py` |
+
+### 生成图表
+
+```bash
+# 查看帮助信息
+python scripts/generate_figures.py --help
+
+# 生成所有图表（使用默认配置）
+python scripts/generate_figures.py
+
+# 指定结果目录
+python scripts/generate_figures.py --results-dir checkpoints/evaluation_results
+
+# 指定输出目录
+python scripts/generate_figures.py --figures-dir docs/figures
+```
+
+### 图表输出位置
+
+所有生成的图表默认保存在 `docs/figures/` 目录下，格式为PNG（300 DPI）。
+
+## 评估命令
+
+```bash
+# 评估默认模型
+python scripts/evaluate.py
+
+# 评估指定模型
+python scripts/evaluate.py --model model_supcon
+python scripts/evaluate.py --model model_baseline
+python scripts/evaluate.py --model model_infonce
+
+# 不保存评估结果
+python scripts/evaluate.py --no-save
+```
+
+### 评估结果
+
+评估结果保存在 `checkpoints/evaluation_results/` 目录下，格式为JSON。
+
+```json
+{
+  "model_name": "model_supcon",
+  "timestamp": "20260421_175858",
+  "labels": [0, 0, 1, ...],
+  "preds": [0, 1, 1, ...],
+  "probs": [0.12, 0.85, ...],
+  "metrics": {
+    "accuracy": 0.8113,
+    "precision": 0.8147,
+    "recall": 0.8129,
+    "f1": 0.8138
+  }
+}
+```
+
+## 工具模块
+
+### 日志模块
+
+**位置**: `utils/logger.py`
+
+提供统一的日志记录功能：
+- 带时间戳的日志文件
+- 支持不同日志级别（DEBUG, INFO, WARN, ERROR）
+- 同时输出到文件和控制台
+- 格式化的日志消息
+
+使用方法：
+
+```python
+from utils.logger import get_logger
+
+logger = get_logger('train')
+logger.info("训练开始")
+logger.log_config({'batch_size': 16})
+logger.log_metrics(epoch=1, step=10, total_loss=0.5, ce_loss=0.4, con_loss=0.1)
+```
+
+### 配置模块
+
+**位置**: `utils/config.py`
+
+统一管理项目配置：
+- 读取YAML配置文件
+- 提供默认配置
+- 路径管理（自动转换为绝对路径）
+- 配置保存和打印
+
+使用方法：
+
+```python
+from utils.config import get_config, init_config
+
+# 读取配置
+config = get_config()
+
+# 获取项目根目录
+project_root = config.get_project_root()
+
+# 获取路径
+data_dir = config.get_path('data_dir')
+checkpoints_dir = config.get_path('checkpoints_dir')
+
+# 初始化配置文件
+init_config()
+```
+
+## 快速开始（完整流程）
+
+```bash
+# 1. 准备数据（如果需要）
+# 数据已处理，跳过此步骤
+
+# 2. 训练不同模型用于对比
+python scripts/train.py --contrastive-type supcon --full
+python scripts/train.py --contrastive-type infonce --full
+python scripts/train.py --no-contrastive --full
+
+# 3. 评估模型
+python scripts/evaluate.py --model model_supcon
+python scripts/evaluate.py --model model_infonce
+python scripts/evaluate.py --model model_baseline
+
+# 4. 生成所有实验图表
+python scripts/generate_figures.py
+```
+
+## 项目特色
+
+1. **配置驱动**：所有参数通过 `config.yaml` 统一管理，无需修改代码
+2. **时间戳日志**：每次运行生成带时间戳的日志，避免覆盖
+3. **统一路径**：自动将相对路径转换为绝对路径，支持从任意位置运行
+4. **完整可视化**：提供训练曲线、混淆矩阵、ROC、t-SNE等全套图表
+5. **结构清晰**：模块化设计，便于维护和扩展
+
+## 目录说明
+
+| 目录 | 说明 | Git管理 |
+|------|------|---------|
+| `data/` | 数据目录（保留目录结构） | 保留目录，忽略文件 |
+| `checkpoints/` | 模型权重（保留目录结构） | 保留目录，忽略.pth文件 |
+| `logs/` | 日志目录（保留目录结构） | 保留目录，忽略.log文件 |
+| `docs/` | 文档目录（保留目录结构） | 保留目录，忽略图表文件 |
+| `utils/` | 工具模块 | 完全管理 |
+| `models/` | 模型定义 | 完全管理 |
+| `scripts/` | 核心脚本 | 完全管理 |
+| `templates/` | 模板文件 | 完全管理 |
+
+## 依赖清单
+
+详细依赖列表请查看 `requirements.txt`，主要包括：
+
+- 深度学习：torch, transformers
+- 数据处理：pandas, numpy
+- 机器学习：scikit-learn
+- 中文处理：jieba, synonyms
+- 英文处理：nltk
+- 可视化：matplotlib, seaborn
+- Web服务：flask, flask-cors
+- 配置管理：pyyaml
+
+## 许可证
+
+本项目仅用于学术研究和教育目的。
