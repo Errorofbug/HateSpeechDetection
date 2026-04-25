@@ -10,6 +10,8 @@
 import os
 import sys
 from datetime import datetime
+import random
+import numpy as np
 
 # 获取项目根目录
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -28,6 +30,20 @@ from torch.optim import AdamW
 from scripts.dataset import HateSpeechDataset
 from models.model import ContrastiveHateSpeechModel
 from utils import train_logger, config
+
+
+def set_seed(seed=42):
+    """
+    设置随机种子以确保实验可重复性
+    """
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed(seed)
+        torch.cuda.manual_seed_all(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
 
 
 def info_nce_loss(features_original, features_augmented, temperature=0.05):
@@ -159,6 +175,9 @@ def train(use_contrastive=None, contrastive_type=None, use_mini=None):
     train_logger.info(f"模型: {model_name}")
     train_logger.info("=" * 80)
 
+    # 设置随机种子以确保实验可重复性
+    set_seed(42)
+
     # 训练循环
     model.train()
     global_step = 0
@@ -253,7 +272,7 @@ def train(use_contrastive=None, contrastive_type=None, use_mini=None):
     train_logger.info(f"Loss日志已保存至: {train_logger.current_loss_file}")
     train_logger.info("=" * 80)
 
-    return save_path, log_file, logger.current_loss_file
+    return save_path, log_file, train_logger.current_loss_file
 
 
 if __name__ == "__main__":
