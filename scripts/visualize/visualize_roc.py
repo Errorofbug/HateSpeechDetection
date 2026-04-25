@@ -11,7 +11,7 @@ sys.path.insert(0, PROJECT_ROOT)
 import matplotlib.pyplot as plt
 import matplotlib
 
-from utils.config import get_config
+from utils import config
 
 # 设置中文字体
 matplotlib.rcParams['font.sans-serif'] = ['SimHei', 'Arial Unicode MS', 'DejaVu Sans']

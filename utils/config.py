@@ -193,7 +193,12 @@ def init_config(config_path='config.yaml'):
     参数:
         config_path: 配置文件路径
     """
-    config = Config(config_path)
-    config.save()
+    global _config
+    _config = Config(config_path)
+    _config.save()
     print(f"配置文件已创建: {config_path}")
-    return config
+    return _config
+
+
+# 全局配置实例（可直接导入使用）
+config = get_config()

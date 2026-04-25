@@ -2,6 +2,9 @@
 项目日志模块
 
 提供统一的日志记录功能，支持时间戳日志、文件输出和不同级别
+
+使用方式:
+    from utils.logger import logger, train_logger
 """
 import os
 import sys
@@ -11,7 +14,7 @@ from datetime import datetime
 class Logger:
     """统一的日志记录器"""
 
-    def __init__(self, name, log_dir='logs', log_to_file=True, log_to_console=True):
+    def __init__(self, name, log_dir='logs', log_to_file=True, log_to_console=True, enable_csv=False):
         """
         初始化日志器
 
@@ -20,11 +23,13 @@ class Logger:
             log_dir: 日志文件保存目录
             log_to_file: 是否输出到文件
             log_to_console: 是否输出到控制台
+            enable_csv: 是否创建CSV格式的loss日志文件（仅train_logger需要）
         """
         self.name = name
         self.log_to_file = log_to_file
         self.log_to_console = log_to_console
         self.log_dir = log_dir
+        self.enable_csv = enable_csv
 
         # 创建日志目录
         if log_to_file:
@@ -36,9 +41,8 @@ class Logger:
         self.current_loss_file = None
 
     def get_log_filename(self):
-        """生成带时间戳的日志文件名"""
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        return os.path.join(self.log_dir, f'{self.name}_{timestamp}.log')
+        """生成日志文件名"""
+        return os.path.join(self.log_dir, f'{self.name}.log')
 
     def set_log_file(self, log_file=None):
         """
@@ -55,13 +59,14 @@ class Logger:
                 f.write(f"# Log created at: {datetime.now()}\n")
                 f.write("=" * 80 + "\n")
 
-            # 创建loss日志文件（CSV格式，用于绘图）
-            loss_log_file = log_file.replace('.log', '_loss.csv')
-            self.current_loss_file = loss_log_file
+            # 仅当启用CSV时才创建loss日志文件（用于绘图）
+            if self.enable_csv:
+                loss_log_file = log_file.replace('.log', '_loss.csv')
+                self.current_loss_file = loss_log_file
 
-            # 写入CSV表头
-            with open(loss_log_file, 'w', encoding='utf-8') as f:
-                f.write("epoch,step,total_loss,ce_loss,con_loss\n")
+                # 写入CSV表头
+                with open(loss_log_file, 'w', encoding='utf-8') as f:
+                    f.write("epoch,step,total_loss,ce_loss,con_loss\n")
 
     def _format_message(self, level, message):
         """格式化日志消息"""
@@ -181,3 +186,8 @@ class Logger:
 def get_logger(name, log_dir='logs'):
     """获取日志器实例"""
     return Logger(name, log_dir=log_dir)
+
+
+# 全局日志器实例（由 __init__.py 初始化）
+logger = None
+train_logger = None

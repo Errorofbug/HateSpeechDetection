@@ -18,7 +18,7 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(SCRIPT_DIR)
 sys.path.insert(0, PROJECT_ROOT)
 
-from utils.config import get_config
+from utils import config
 
 
 def generate_all_figures(results_dir=None, figures_dir=None):
@@ -29,9 +29,6 @@ def generate_all_figures(results_dir=None, figures_dir=None):
         results_dir: 评估结果目录（None则从配置读取）
         figures_dir: 图表保存目录（None则从配置读取）
     """
-    # 加载配置
-    config = get_config()
-
     # 获取参数
     if results_dir is None:
         results_dir = config.get('evaluation', 'results_dir', default='checkpoints/evaluation_results')

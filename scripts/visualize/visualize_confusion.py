@@ -12,7 +12,7 @@ import matplotlib.pyplot as plt
 import matplotlib
 import seaborn as sns
 
-from utils.config import get_config
+from utils import config
 
 # 设置中文字体
 matplotlib.rcParams['font.sans-serif'] = ['SimHei', 'Arial Unicode MS', 'DejaVu Sans']

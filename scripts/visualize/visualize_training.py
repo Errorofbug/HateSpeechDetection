@@ -18,7 +18,7 @@ import matplotlib.pyplot as plt
 import matplotlib
 import numpy as np
 
-from utils.config import get_config
+from utils import config
 
 # 设置中文字体
 matplotlib.rcParams['font.sans-serif'] = ['SimHei', 'Arial Unicode MS', 'DejaVu Sans']
@@ -258,8 +258,6 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
 
-    # 加载配置
-    config = get_config()
     save_path = args.save_path or config.get('visualization', 'figures_dir', default='docs/figures')
 
     # 绘制训练曲线

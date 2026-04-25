@@ -24,8 +24,7 @@ import json
 
 from scripts.dataset import HateSpeechDataset
 from models.model import ContrastiveHateSpeechModel
-from utils.logger import get_logger
-from utils.config import get_config
+from utils import logger, config
 
 
 def evaluate(model_name=None, save_results=None):
@@ -39,9 +38,6 @@ def evaluate(model_name=None, save_results=None):
     返回:
         labels, preds, probs, metrics
     """
-    # 加载配置
-    config = get_config()
-
     # 从配置获取参数
     if model_name is None:
         model_name = config.get('evaluation', 'model_name', default='model_supcon')
@@ -51,10 +47,8 @@ def evaluate(model_name=None, save_results=None):
     batch_size = config.get('evaluation', 'batch_size', default=16)
     results_dir = config.get('evaluation', 'results_dir', default='checkpoints/evaluation_results')
 
-    # 初始化日志器
+    # 设置日志文件
     log_dir = config.get_path('logs_dir')
-    logger = get_logger('evaluate', log_dir=log_dir)
-
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
     log_file = os.path.join(log_dir, f'evaluate_{timestamp}.log')
     logger.set_log_file(log_file)

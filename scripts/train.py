@@ -27,8 +27,7 @@ from torch.optim import AdamW
 
 from scripts.dataset import HateSpeechDataset
 from models.model import ContrastiveHateSpeechModel
-from utils.logger import get_logger
-from utils.config import get_config
+from utils import train_logger, config
 
 
 def info_nce_loss(features_original, features_augmented, temperature=0.05):
@@ -90,9 +89,6 @@ def train(use_contrastive=None, contrastive_type=None, use_mini=None):
         contrastive_type: 对比学习类型（None则从配置读取）
         use_mini: 是否使用mini数据集（None则从配置读取）
     """
-    # 加载配置
-    config = get_config()
-
     # 从配置获取参数
     batch_size = int(config.get('training', 'batch_size', default=16))
     epochs = int(config.get('training', 'epochs', default=3))
@@ -112,20 +108,19 @@ def train(use_contrastive=None, contrastive_type=None, use_mini=None):
     # 设置设备
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    # 初始化日志器
+    # 初始化训练日志器
     log_dir = config.get_path('logs_dir')
-    logger = get_logger('train', log_dir=log_dir)
 
     # 生成带时间戳的日志文件
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
     log_file = os.path.join(log_dir, f'training_{timestamp}.log')
-    logger.set_log_file(log_file)
+    train_logger.set_log_file(log_file)
 
     # 记录配置
-    logger.info("=" * 80)
-    logger.info("开始训练")
-    logger.info("=" * 80)
-    logger.log_config({
+    train_logger.info("=" * 80)
+    train_logger.info("开始训练")
+    train_logger.info("=" * 80)
+    train_logger.log_config({
         'Device': device,
         'Batch Size': batch_size,
         'Epochs': epochs if not use_mini else 1,
@@ -144,16 +139,16 @@ def train(use_contrastive=None, contrastive_type=None, use_mini=None):
     if use_mini:
         epochs = 1  # mini数据集只用1个epoch
         data_path = os.path.join(data_processed_dir, 'mini_train.csv')
-        logger.info("使用mini数据集进行快速测试...")
+        train_logger.info("使用mini数据集进行快速测试...")
     else:
         data_path = os.path.join(data_processed_dir, 'train.csv')
-        logger.info("使用完整训练集进行训练...")
+        train_logger.info("使用完整训练集进行训练...")
 
     train_dataset = HateSpeechDataset(data_path, tokenizer)
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
 
-    logger.info(f"训练集大小: {len(train_dataset)}")
-    logger.info(f"Batch数: {len(train_loader)}")
+    train_logger.info(f"训练集大小: {len(train_dataset)}")
+    train_logger.info(f"Batch数: {len(train_loader)}")
 
     # 初始化模型
     model_name = config.get('model', 'model_name', default='bert-base-chinese')
@@ -161,8 +156,8 @@ def train(use_contrastive=None, contrastive_type=None, use_mini=None):
     optimizer = AdamW(model.parameters(), lr=learning_rate)
     criterion_ce = nn.CrossEntropyLoss()
 
-    logger.info(f"模型: {model_name}")
-    logger.info("=" * 80)
+    train_logger.info(f"模型: {model_name}")
+    train_logger.info("=" * 80)
 
     # 训练循环
     model.train()
@@ -173,9 +168,9 @@ def train(use_contrastive=None, contrastive_type=None, use_mini=None):
         total_ce_loss = 0
         total_con_loss = 0
 
-        logger.info("")
-        logger.info(f"Epoch {epoch + 1}/{epochs}")
-        logger.info("-" * 80)
+        train_logger.info("")
+        train_logger.info(f"Epoch {epoch + 1}/{epochs}")
+        train_logger.info("-" * 80)
 
         for step, batch in enumerate(train_loader):
             optimizer.zero_grad()
@@ -214,7 +209,7 @@ def train(use_contrastive=None, contrastive_type=None, use_mini=None):
             # 每log_per_step步记录一次
             if step % log_per_step == 0:
                 # 记录到可读日志
-                logger.log_metrics(
+                train_logger.log_metrics(
                     epoch=epoch + 1,
                     step=step,
                     total_loss=loss.item(),
@@ -222,7 +217,7 @@ def train(use_contrastive=None, contrastive_type=None, use_mini=None):
                     con_loss=loss_con.item() if use_contrastive else None
                 )
                 # 记录到CSV格式的loss日志（用于绘图）
-                logger.log_metrics_for_plot(
+                train_logger.log_metrics_for_plot(
                     epoch=epoch + 1,
                     step=step,
                     total_loss=loss.item(),
@@ -235,12 +230,12 @@ def train(use_contrastive=None, contrastive_type=None, use_mini=None):
         avg_ce_loss = total_ce_loss / len(train_loader)
         avg_con_loss = total_con_loss / len(train_loader) if use_contrastive else 0
 
-        logger.info("-" * 80)
-        logger.info(f"Epoch {epoch + 1} 完成:")
-        logger.info(f"  平均总损失: {avg_loss:.6f}")
-        logger.info(f"  平均分类损失: {avg_ce_loss:.6f}")
+        train_logger.info("-" * 80)
+        train_logger.info(f"Epoch {epoch + 1} 完成:")
+        train_logger.info(f"  平均总损失: {avg_loss:.6f}")
+        train_logger.info(f"  平均分类损失: {avg_ce_loss:.6f}")
         if use_contrastive:
-            logger.info(f"  平均对比损失: {avg_con_loss:.6f}")
+            train_logger.info(f"  平均对比损失: {avg_con_loss:.6f}")
 
     # 保存模型
     checkpoints_dir = config.get_path('checkpoints_dir')
@@ -251,12 +246,12 @@ def train(use_contrastive=None, contrastive_type=None, use_mini=None):
     save_path = os.path.join(checkpoints_dir, model_filename)
     torch.save(model.state_dict(), save_path)
 
-    logger.info("=" * 80)
-    logger.info("训练完成!")
-    logger.info(f"模型已保存至: {save_path}")
-    logger.info(f"日志已保存至: {log_file}")
-    logger.info(f"Loss日志已保存至: {logger.current_loss_file}")
-    logger.info("=" * 80)
+    train_logger.info("=" * 80)
+    train_logger.info("训练完成!")
+    train_logger.info(f"模型已保存至: {save_path}")
+    train_logger.info(f"日志已保存至: {log_file}")
+    train_logger.info(f"Loss日志已保存至: {train_logger.current_loss_file}")
+    train_logger.info("=" * 80)
 
     return save_path, log_file, logger.current_loss_file
 
