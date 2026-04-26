@@ -14,14 +14,14 @@ paths:
 
 # 训练配置
 training:
-  batch_size: 16
-  epochs: 1
+  batch_size: 64
+  epochs: 3
   learning_rate: 2e-5
   lambda_weight: 0.1
   temperature: 0.05
   projection_dim: 128
   dropout_rate: 0.3
-  log_per_step: 1 # 每多少步记录一次loss
+  log_per_step: 10 # 每多少步记录一次loss
   use_mini_dataset: true  # false: 使用完整数据集, true: 使用mini数据集快速测试
   use_contrastive: true  # true: 使用对比学习, false: 不使用对比学习
   contrastive_type: supcon  # supcon: 有监督对比学习, infonce: InfoNCE

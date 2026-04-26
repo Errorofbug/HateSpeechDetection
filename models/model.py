@@ -4,7 +4,7 @@ from transformers import BertModel
 
 
 class ContrastiveHateSpeechModel(nn.Module):
-    def __init__(self, model_name='bert-base-chinese', projection_dim=128):
+    def __init__(self, model_name='bert-base-chinese', projection_dim=128, use_projection=True):
         super(ContrastiveHateSpeechModel, self).__init__()
 
         # 1. 文本编码器 (Text Encoder)
@@ -15,11 +15,13 @@ class ContrastiveHateSpeechModel(nn.Module):
 
         # 2. 对比学习模块 / 投影层 (Projector)
         # 将 768 维映射到低维空间 (如 128 维) 用于计算对比损失，这能提升对比学习的泛化性
-        self.projector = nn.Sequential(
-            nn.Linear(hidden_size, hidden_size),
-            nn.ReLU(),
-            nn.Linear(hidden_size, projection_dim)
-        )
+        self.use_projection = use_projection
+        if use_projection:
+            self.projector = nn.Sequential(
+                nn.Linear(hidden_size, hidden_size),
+                nn.ReLU(),
+                nn.Linear(hidden_size, projection_dim)
+            )
 
         # 3. 分类头 (Classifier Head)
         # 用于最终检测任务，判断 0 (正常) 还是 1 (不当言论)
@@ -31,6 +33,14 @@ class ContrastiveHateSpeechModel(nn.Module):
     def forward(self, input_ids, attention_mask):
         """
         前向传播函数
+
+        参数:
+            input_ids: 输入的token ID序列
+            attention_mask: 注意力掩码
+
+        返回:
+            projected_feature: 用于对比学习的特征向量（如果use_projection=True则经过投影层）
+            logits: 分类任务的输出logits
         """
         # 将文本输入 BERT 编码器
         outputs = self.encoder(input_ids=input_ids, attention_mask=attention_mask)
@@ -39,7 +49,12 @@ class ContrastiveHateSpeechModel(nn.Module):
         cls_embedding = outputs.pooler_output
 
         # 经过投影层，得到用于对比学习的特征向量
-        projected_feature = self.projector(cls_embedding)
+        if self.use_projection:
+            projected_feature = self.projector(cls_embedding)
+        else:
+            # 消融实验：直接使用BERT输出作为投影特征（不经过投影层）
+            # 注意：维度不同会影响对比损失计算，但可验证投影层的作用
+            projected_feature = cls_embedding
 
         # 经过分类头，得到预测类别的对数几率 (Logits)
         logits = self.classifier(cls_embedding)

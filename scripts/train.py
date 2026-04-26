@@ -5,7 +5,7 @@
     python scripts/train.py                          # 使用默认配置训练（SupCon + mini数据集）
     python scripts/train.py --full                   # 使用完整数据集训练
     python scripts/train.py --no-contrastive         # 训练基线模型（无对比学习）
-    python scripts/train.py --contrastive-type infonce  # 使用InfoNCE损失
+    python scripts/train.py --no-projection --full   # 消融实验：不使用投影层
 """
 import os
 import sys
@@ -96,7 +96,42 @@ def supcon_loss(features_original, features_augmented, labels, temperature=0.05)
     return loss
 
 
-def train(use_contrastive=None, contrastive_type=None, use_mini=None):
+def evaluate_model(model, data_loader, device):
+    """
+    评估模型在给定数据集上的性能
+
+    返回:
+        accuracy, precision, recall, f1
+    """
+    model.eval()
+    all_preds = []
+    all_labels = []
+
+    with torch.no_grad():
+        for batch in data_loader:
+            input_ids = batch['input_ids'].to(device)
+            attention_mask = batch['attention_mask'].to(device)
+            labels = batch['labels'].numpy()
+
+            _, logits = model(input_ids, attention_mask)
+            preds = torch.argmax(logits, dim=1).cpu().numpy()
+
+            all_preds.extend(preds)
+            all_labels.extend(labels)
+
+    # 计算指标
+    from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
+
+    accuracy = accuracy_score(all_labels, all_preds)
+    precision = precision_score(all_labels, all_preds, average='binary', zero_division=0)
+    recall = recall_score(all_labels, all_preds, average='binary', zero_division=0)
+    f1 = f1_score(all_labels, all_preds, average='binary', zero_division=0)
+
+    model.train()
+    return accuracy, precision, recall, f1
+
+
+def train(use_contrastive=None, contrastive_type=None, use_mini=None, use_projection=None):
     """
     训练函数
 
@@ -104,6 +139,7 @@ def train(use_contrastive=None, contrastive_type=None, use_mini=None):
         use_contrastive: 是否使用对比学习（None则从配置读取）
         contrastive_type: 对比学习类型（None则从配置读取）
         use_mini: 是否使用mini数据集（None则从配置读取）
+        use_projection: 是否使用投影层（None则默认True）
     """
     # 从配置获取参数
     batch_size = int(config.get('training', 'batch_size', default=16))
@@ -120,6 +156,8 @@ def train(use_contrastive=None, contrastive_type=None, use_mini=None):
         contrastive_type = config.get('training', 'contrastive_type', default='supcon')
     if use_mini is None:
         use_mini = config.get('training', 'use_mini_dataset', default=True)
+    if use_projection is None:
+        use_projection = config.get('training', 'use_projection', default=True)
 
     # 设置设备
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -145,6 +183,7 @@ def train(use_contrastive=None, contrastive_type=None, use_mini=None):
         'Temperature': temperature,
         'Use Contrastive': use_contrastive,
         'Contrastive Type': contrastive_type if use_contrastive else 'N/A',
+        'Use Projection': use_projection,
         'Use Mini Dataset': use_mini
     })
 
@@ -163,12 +202,20 @@ def train(use_contrastive=None, contrastive_type=None, use_mini=None):
     train_dataset = HateSpeechDataset(data_path, tokenizer)
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
 
+    # 加载验证集
+    dev_path = os.path.join(data_processed_dir, 'dev.csv')
+    dev_dataset = HateSpeechDataset(dev_path, tokenizer)
+    dev_loader = DataLoader(dev_dataset, batch_size=batch_size, shuffle=False)
+
     train_logger.info(f"训练集大小: {len(train_dataset)}")
-    train_logger.info(f"Batch数: {len(train_loader)}")
+    train_logger.info(f"验证集大小: {len(dev_dataset)}")
+    train_logger.info(f"训练Batch数: {len(train_loader)}")
+    train_logger.info(f"验证Batch数: {len(dev_loader)}")
 
     # 初始化模型
     model_name = config.get('model', 'model_name', default='bert-base-chinese')
-    model = ContrastiveHateSpeechModel(model_name).to(device)
+    projection_dim = int(config.get('training', 'projection_dim', default=128))
+    model = ContrastiveHateSpeechModel(model_name, projection_dim=projection_dim, use_projection=use_projection).to(device)
     optimizer = AdamW(model.parameters(), lr=learning_rate)
     criterion_ce = nn.CrossEntropyLoss()
 
@@ -181,6 +228,14 @@ def train(use_contrastive=None, contrastive_type=None, use_mini=None):
     # 训练循环
     model.train()
     global_step = 0
+
+    # 记录最佳模型
+    best_dev_f1 = 0.0
+    best_epoch = 0
+    best_model_state = None
+
+    # 记录每个epoch的指标
+    epoch_metrics = []  # [(epoch, train_loss, dev_acc, dev_f1), ...]
 
     for epoch in range(epochs):
         total_train_loss = 0
@@ -205,13 +260,22 @@ def train(use_contrastive=None, contrastive_type=None, use_mini=None):
 
             loss_ce = criterion_ce(logits, labels)
 
-            if use_contrastive:
+            if use_contrastive and use_projection:
+                if contrastive_type == 'supcon':
+                    loss_con = supcon_loss(proj_orig, proj_aug, labels, temperature)
+                else:
+                    loss_con = info_nce_loss(proj_orig, proj_aug, temperature)
+                loss = loss_ce + lambda_weight * loss_con
+            elif use_contrastive and not use_projection:
+                # 消融实验：不使用投影层，但仍计算对比损失
+                # 此时proj_orig和proj_aug是768维（BERT输出）而非128维
                 if contrastive_type == 'supcon':
                     loss_con = supcon_loss(proj_orig, proj_aug, labels, temperature)
                 else:
                     loss_con = info_nce_loss(proj_orig, proj_aug, temperature)
                 loss = loss_ce + lambda_weight * loss_con
             else:
+                # Baseline：不使用对比学习
                 loss_con = torch.tensor(0.0)
                 loss = loss_ce
 
@@ -250,26 +314,91 @@ def train(use_contrastive=None, contrastive_type=None, use_mini=None):
         avg_con_loss = total_con_loss / len(train_loader) if use_contrastive else 0
 
         train_logger.info("-" * 80)
-        train_logger.info(f"Epoch {epoch + 1} 完成:")
+        train_logger.info(f"Epoch {epoch + 1} 训练完成:")
         train_logger.info(f"  平均总损失: {avg_loss:.6f}")
         train_logger.info(f"  平均分类损失: {avg_ce_loss:.6f}")
         if use_contrastive:
             train_logger.info(f"  平均对比损失: {avg_con_loss:.6f}")
 
-    # 保存模型
+        # 在验证集上评估
+        train_logger.info(">>> 在验证集上评估...")
+        dev_acc, dev_prec, dev_rec, dev_f1 = evaluate_model(model, dev_loader, device)
+
+        train_logger.info("-" * 80)
+        train_logger.info(f"Epoch {epoch + 1} 验证结果:")
+        train_logger.info(f"  Accuracy: {dev_acc:.4f}")
+        train_logger.info(f"  Precision: {dev_prec:.4f}")
+        train_logger.info(f"  Recall: {dev_rec:.4f}")
+        train_logger.info(f"  F1-Score: {dev_f1:.4f}")
+
+        # 记录当前epoch指标
+        epoch_metrics.append({
+            'epoch': epoch + 1,
+            'train_loss': avg_loss,
+            'dev_acc': dev_acc,
+            'dev_f1': dev_f1
+        })
+
+        # 检查是否是最佳模型（根据F1-Score）
+        if dev_f1 > best_dev_f1:
+            best_dev_f1 = dev_f1
+            best_epoch = epoch + 1
+            best_model_state = model.state_dict().copy()
+            train_logger.info(f"  ✓ 新的最佳模型! Epoch {epoch + 1}, F1-Score: {dev_f1:.4f}")
+        else:
+            train_logger.info(f"  当前最佳: Epoch {best_epoch}, F1-Score: {best_dev_f1:.4f}")
+
+    # 保存最佳模型
     checkpoints_dir = config.get_path('checkpoints_dir')
     os.makedirs(checkpoints_dir, exist_ok=True)
 
-    model_suffix = f'{contrastive_type}' if use_contrastive else 'baseline'
+    # 根据配置生成模型文件名
+    if not use_contrastive:
+        model_suffix = 'baseline'
+    elif not use_projection:
+        model_suffix = f'{contrastive_type}_no_proj'
+    else:
+        model_suffix = f'{contrastive_type}'
+
     model_filename = f'model_{model_suffix}.pth'
     save_path = os.path.join(checkpoints_dir, model_filename)
-    torch.save(model.state_dict(), save_path)
 
-    train_logger.info("=" * 80)
-    train_logger.info("训练完成!")
-    train_logger.info(f"模型已保存至: {save_path}")
+    # 保存最佳模型
+    if best_model_state is not None:
+        torch.save(best_model_state, save_path)
+        train_logger.info("=" * 80)
+        train_logger.info("训练完成!")
+        train_logger.info(f"最佳模型: Epoch {best_epoch}, Dev F1-Score: {best_dev_f1:.4f}")
+        train_logger.info(f"模型已保存至: {save_path}")
+    else:
+        # 如果没有评估过（理论上不会发生），保存最后一个epoch的模型
+        torch.save(model.state_dict(), save_path)
+        train_logger.info("=" * 80)
+        train_logger.info("训练完成!")
+        train_logger.info(f"模型已保存至: {save_path}")
+
     train_logger.info(f"日志已保存至: {log_file}")
     train_logger.info(f"Loss日志已保存至: {train_logger.current_loss_file}")
+    train_logger.info("=" * 80)
+
+    # 打印所有epoch的指标总结
+    train_logger.info("")
+    train_logger.info("=" * 80)
+    train_logger.info("所有Epoch的验证指标:")
+    train_logger.info("=" * 80)
+    train_logger.info(f"{'Epoch':>6} {'Train Loss':>12} {'Dev Acc':>10} {'Dev F1':>10}")
+    train_logger.info("-" * 50)
+    for metrics in epoch_metrics:
+        train_logger.info(f"{metrics['epoch']:>6} {metrics['train_loss']:>12.6f} {metrics['dev_acc']:>10.4f} {metrics['dev_f1']:>10.4f}")
+
+    # 保存epoch指标到CSV文件（用于绘制验证曲线）
+    metrics_file = log_file.replace('.log', '_metrics.csv')
+    with open(metrics_file, 'w', encoding='utf-8') as f:
+        f.write("epoch,train_loss,dev_acc,dev_f1\n")
+        for metrics in epoch_metrics:
+            f.write(f"{metrics['epoch']},{metrics['train_loss']:.6f},{metrics['dev_acc']:.6f},{metrics['dev_f1']:.6f}\n")
+
+    train_logger.info(f"Epoch指标已保存至: {metrics_file}")
     train_logger.info("=" * 80)
 
     return save_path, log_file, train_logger.current_loss_file
@@ -281,6 +410,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='训练对比学习不当言论检测模型')
     parser.add_argument('--no-contrastive', action='store_true',
                        help='不使用对比学习（基线模型）')
+    parser.add_argument('--no-projection', action='store_true',
+                       help='不使用投影层（消融实验）')
     parser.add_argument('--contrastive-type', type=str, default=None,
                        choices=['supcon', 'infonce'],
                        help='对比学习类型: supcon 或 infonce')
@@ -291,6 +422,7 @@ if __name__ == "__main__":
 
     train(
         use_contrastive=not args.no_contrastive if args.no_contrastive else None,
+        use_projection=not args.no_projection if args.no_projection else None,
         contrastive_type=args.contrastive_type,
         use_mini=False if args.full else None
     )

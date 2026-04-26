@@ -14,7 +14,7 @@ import matplotlib
 from utils import config
 
 # 设置中文字体
-matplotlib.rcParams['font.sans-serif'] = ['SimHei', 'Arial Unicode MS', 'DejaVu Sans']
+matplotlib.rcParams['font.sans-serif'] = ['Arial Unicode MS']
 matplotlib.rcParams['axes.unicode_minus'] = False
 
 

@@ -14,7 +14,7 @@ import matplotlib
 from utils import config
 
 # 设置中文字体
-matplotlib.rcParams['font.sans-serif'] = ['SimHei', 'Arial Unicode MS', 'DejaVu Sans']
+matplotlib.rcParams['font.sans-serif'] = ['Arial Unicode MS']
 matplotlib.rcParams['axes.unicode_minus'] = False
 
 
@@ -30,10 +30,21 @@ def plot_performance_comparison(metrics_dict, save_path='documents/figures'):
 
     # 转换为DataFrame
     df = pd.DataFrame(metrics_dict).T
-    metrics = ['Accuracy', 'Precision', 'Recall', 'F1-Score']
 
-    # 确保所有指标都存在
-    for metric in metrics:
+    # 键名映射：小写键名转大写显示名
+    key_mapping = {
+        'accuracy': 'Accuracy',
+        'precision': 'Precision',
+        'recall': 'Recall',
+        'f1': 'F1-Score'
+    }
+
+    # 创建显示用的列名（大写）
+    display_metrics = ['Accuracy', 'Precision', 'Recall', 'F1-Score']
+    actual_metrics = ['accuracy', 'precision', 'recall', 'f1']
+
+    # 确保所有指标都存在（使用小写键名检查）
+    for metric in actual_metrics:
         if metric not in df.columns:
             df[metric] = [0] * len(df)
 
@@ -46,7 +57,7 @@ def plot_performance_comparison(metrics_dict, save_path='documents/figures'):
     width = 0.35
 
     # 子图1: Accuracy
-    axes[0, 0].bar(x, df['Accuracy'], color=colors[0], alpha=0.8, width=width)
+    axes[0, 0].bar(x, df['accuracy'], color=colors[0], alpha=0.8, width=width)
     axes[0, 0].set_ylabel('Score', fontsize=12)
     axes[0, 0].set_title('Accuracy', fontsize=14, fontweight='bold')
     axes[0, 0].set_xticks(x)
@@ -54,40 +65,40 @@ def plot_performance_comparison(metrics_dict, save_path='documents/figures'):
     axes[0, 0].set_ylim([0, 1])
     axes[0, 0].grid(axis='y', alpha=0.3)
     # 添加数值标签
-    for i, v in enumerate(df['Accuracy']):
+    for i, v in enumerate(df['accuracy']):
         axes[0, 0].text(i, v + 0.02, f'{v:.4f}', ha='center', va='bottom', fontsize=10)
 
     # 子图2: Precision
-    axes[0, 1].bar(x, df['Precision'], color=colors[1], alpha=0.8, width=width)
+    axes[0, 1].bar(x, df['precision'], color=colors[1], alpha=0.8, width=width)
     axes[0, 1].set_ylabel('Score', fontsize=12)
     axes[0, 1].set_title('Precision', fontsize=14, fontweight='bold')
     axes[0, 1].set_xticks(x)
     axes[0, 1].set_xticklabels(df.index, rotation=15, ha='right')
     axes[0, 1].set_ylim([0, 1])
     axes[0, 1].grid(axis='y', alpha=0.3)
-    for i, v in enumerate(df['Precision']):
+    for i, v in enumerate(df['precision']):
         axes[0, 1].text(i, v + 0.02, f'{v:.4f}', ha='center', va='bottom', fontsize=10)
 
     # 子图3: Recall
-    axes[1, 0].bar(x, df['Recall'], color=colors[2], alpha=0.8, width=width)
+    axes[1, 0].bar(x, df['recall'], color=colors[2], alpha=0.8, width=width)
     axes[1, 0].set_ylabel('Score', fontsize=12)
     axes[1, 0].set_title('Recall', fontsize=14, fontweight='bold')
     axes[1, 0].set_xticks(x)
     axes[1, 0].set_xticklabels(df.index, rotation=15, ha='right')
     axes[1, 0].set_ylim([0, 1])
     axes[1, 0].grid(axis='y', alpha=0.3)
-    for i, v in enumerate(df['Recall']):
+    for i, v in enumerate(df['recall']):
         axes[1, 0].text(i, v + 0.02, f'{v:.4f}', ha='center', va='bottom', fontsize=10)
 
     # 子图4: F1-Score
-    axes[1, 1].bar(x, df['F1-Score'], color=colors[3], alpha=0.8, width=width)
+    axes[1, 1].bar(x, df['f1'], color=colors[3], alpha=0.8, width=width)
     axes[1, 1].set_ylabel('Score', fontsize=12)
     axes[1, 1].set_title('F1-Score', fontsize=14, fontweight='bold')
     axes[1, 1].set_xticks(x)
     axes[1, 1].set_xticklabels(df.index, rotation=15, ha='right')
     axes[1, 1].set_ylim([0, 1])
     axes[1, 1].grid(axis='y', alpha=0.3)
-    for i, v in enumerate(df['F1-Score']):
+    for i, v in enumerate(df['f1']):
         axes[1, 1].text(i, v + 0.02, f'{v:.4f}', ha='center', va='bottom', fontsize=10)
 
     plt.tight_layout()
@@ -109,7 +120,10 @@ def plot_performance_grouped(metrics_dict, save_path='documents/figures'):
 
     df = pd.DataFrame(metrics_dict).T
     models = df.index.tolist()
-    metrics = ['Accuracy', 'Precision', 'Recall', 'F1-Score']
+
+    # 使用小写键名
+    actual_metrics = ['accuracy', 'precision', 'recall', 'f1']
+    display_metrics = ['Accuracy', 'Precision', 'Recall', 'F1-Score']
     colors = ['#2E86AB', '#A23B72', '#F18F01', '#C73E1D']
 
     x = np.arange(len(models))
@@ -117,9 +131,9 @@ def plot_performance_grouped(metrics_dict, save_path='documents/figures'):
 
     fig, ax = plt.subplots(figsize=(12, 6))
 
-    for idx, (metric, color) in enumerate(zip(metrics, colors)):
+    for idx, (metric, color) in enumerate(zip(actual_metrics, colors)):
         offset = (idx - 1.5) * width
-        bars = ax.bar(x + offset, df[metric], width, label=metric, color=color, alpha=0.8)
+        bars = ax.bar(x + offset, df[metric], width, label=display_metrics[idx], color=color, alpha=0.8)
 
         # 添加数值标签
         for bar in bars:
@@ -154,9 +168,12 @@ def plot_improvement_chart(baseline_metrics, improved_metrics, save_path='docume
     """
     os.makedirs(save_path, exist_ok=True)
 
-    metrics = ['Accuracy', 'Precision', 'Recall', 'F1-Score']
-    baseline_values = [baseline_metrics.get(m, 0) for m in metrics]
-    improved_values = [improved_metrics.get(m, 0) for m in metrics]
+    # 使用小写键名
+    actual_metrics = ['accuracy', 'precision', 'recall', 'f1']
+    display_metrics = ['Accuracy', 'Precision', 'Recall', 'F1-Score']
+
+    baseline_values = [baseline_metrics.get(m, 0) for m in actual_metrics]
+    improved_values = [improved_metrics.get(m, 0) for m in actual_metrics]
     improvements = [(improved - baseline) * 100 for improved, baseline in zip(improved_values, baseline_values)]
 
     x = np.arange(len(metrics))

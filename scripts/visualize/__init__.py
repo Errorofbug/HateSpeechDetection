@@ -12,7 +12,6 @@ from .visualize_tsne import extract_features, plot_tsne, plot_multiple_tsne
 __all__ = [
     'plot_training_curves',
     'plot_training_curves_from_csv',
-    'plot_training_curves_from_log',
     'plot_confusion_matrix',
     'plot_performance_comparison',
     'plot_performance_grouped',

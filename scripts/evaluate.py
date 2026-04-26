@@ -70,7 +70,13 @@ def evaluate(model_name=None, save_results=None):
 
     # 加载模型
     model_config_name = config.get('model', 'model_name', default='bert-base-chinese')
-    model = ContrastiveHateSpeechModel(model_config_name).to(device)
+
+    # 根据模型名称判断是否使用投影层
+    use_projection = True
+    if model_name and 'no_proj' in model_name:
+        use_projection = False
+
+    model = ContrastiveHateSpeechModel(model_config_name, use_projection=use_projection).to(device)
 
     checkpoints_dir = config.get_path('checkpoints_dir')
     model_path = os.path.join(checkpoints_dir, f'{model_name}.pth')

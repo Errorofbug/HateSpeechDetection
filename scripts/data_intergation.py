@@ -176,11 +176,13 @@ if __name__ == "__main__":
 
     processor = DataProcessor(stopwords_path=args.stopwords)
 
-    # 数据配置：请根据实际数据位置修改
-    # 格式：(文件路径, 文本列名, 标签列名, 语言)
     configs = [
+        ('data/raw/COLDataset/train.csv', 'TEXT', 'label', 'zh'),
         ('data/raw/COLDataset/dev.csv', 'TEXT', 'label', 'zh'),
-        ('data/raw/toxicndata/dev.json', 'content', 'toxic', 'zh')
+        ('data/raw/COLDataset/test.csv', 'TEXT', 'label', 'zh'),
+        ('data/raw/toxicndata/train.json', 'content', 'toxic', 'zh'),
+        ('data/raw/toxicndata/dev.json', 'content', 'toxic', 'zh'),
+        ('data/raw/toxicndata/test.json', 'content', 'toxic', 'zh')
     ]
 
     processor.process_and_split(configs, output_dir=args.output_dir)

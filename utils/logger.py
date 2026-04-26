@@ -55,7 +55,7 @@ class Logger:
         self.current_log_file = log_file
 
         if self.log_to_file:
-            with open(log_file, 'w', encoding='utf-8') as f:
+            with open(log_file, 'a', encoding='utf-8') as f:  # 追加模式，避免覆盖
                 f.write(f"# Log created at: {datetime.now()}\n")
                 f.write("=" * 80 + "\n")
 
